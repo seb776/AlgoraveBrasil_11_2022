@@ -1,0 +1,14 @@
+{
+  "IMPORTED": {
+    "greyTex": {
+      "PATH": "./Textures/GreyNoise.jpg",
+    },
+      "cookieTex": {
+        "PATH": "./Textures/cookie-collective.png",
+      },
+
+        "ziconTex": {
+          "PATH": "./Textures/zicon_black_512.png",
+        }
+  }
+}
