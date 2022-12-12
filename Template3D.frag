@@ -66,7 +66,7 @@ vec3 getCam(vec3 rd, vec2 uv)
 {
     vec3 r = normalize(cross(rd, vec3(0.,1.,0.)));
     vec3 u = normalize(cross(rd, r));
-    return normalize(rd+r*uv.x+u*uv.y);
+    return normalize(rd+(r*uv.x+u*uv.y)*3.);
 }
 
 float lenny(vec2 v)
@@ -110,8 +110,22 @@ vec2 map(vec3 p)
 {
     vec2 acc = vec2(10000., -1.);
 
+    vec3 psph = p-vec3(sin(time), cos(time*.5), cos(time*2.3)*4.)*.2+vec3(0.,0.,-3.);
+    acc = _min(acc, vec2(length(psph)-.5, 0.));
+    vec3 p2 = p+vec3(0.,0.,time);
+p2.xy *= r2d(p.z*.2-time*.2);
+    float tunnel = _loz(p2.xy, 1.+abs(sin(p2.z)) + 3.*abs(sin(p.z*.3)));
+    acc = _min(acc, vec2(tunnel, 1.));
 
-    acc = _min(acc, vec2(length(p)-1., 0.));
+acc = _min(acc, vec2(-_cube(p, vec3(9.)), 2.));
+for (int i = 0; i < 4; ++i)
+{
+  vec3 p3 = p;
+  p3.xy *= r2d(float(i));
+  p3.xz *= r2d(float(i)+.5*time);
+  acc = _min(acc, vec2(_cucube(p3, vec3(5.), vec3(.1)), 2.));
+
+}
     return acc;
 }
 
@@ -137,28 +151,80 @@ vec3 getNorm(vec3 p, float d)
   return  normalize(vec3(d) - vec3(map(p-e.xyy).x, map(p-e.yxy).x, map(p-e.yyx).x));
 }
 
+vec3 getMat(vec3 p, vec3 n, vec3 rd, vec3 res)
+{
+  vec3 col = n *.5+.5;
+
+  if (res.z == 1.)
+  {
+    vec3 pgrid = p;
+    pgrid.z += time;
+    vec2 grid = sin(pgrid.yz*40.)+.999;
+    float grd = min(grid.x, grid.y);
+    float fade = (1.-sat(res.y/10.));
+    fade *= fade;
+    col = vec3(1.)*(1.-sat(grd*100.))*fade;
+
+    vec2 uv = vec2(atan(p.y, p.x)/PI, p.z+time);
+
+    col += pow(textureRepeat(ziconTex, uv).x, 2.)*vec3(.5,.2,.1)*.125;
+  }
+  return col;
+}
+
 vec3 rdr(vec2 uv)
 {
-    vec3 ro = vec3(0., 0., -5.);
+  uv *= r2d(time*.2);
+    vec3 ro = vec3(sin(time*.3)*.7+5.,sin(time*.2)*9., -5.);
     vec3 ta = vec3(0.,0.,0.);
     vec3 rd = normalize(ta-ro);
     rd = getCam(rd, uv);
     vec3 col = vec3(0.);
 
     vec3 res = trace(ro, rd);
+    float depth = 100.;
     if (res.y > 0.)
     {
+      depth = res.y;
         vec3 p = ro + rd*res.y;
         vec3 n = getNorm(p, res.x);
-        col = n *.5+.5;
+        col = getMat(p, n, rd, res);
+
+        float spec = .1;
+        vec3 refl = normalize(reflect(rd, n)+spec*(vec3(rand(), rand(), rand())-.5));
+        vec3 resrefl = trace(p+n*0.01, refl);
+        if (resrefl.y > 0.)
+        {
+          vec3 prefl = p+refl*resrefl.y;
+          vec3 nrefl = getNorm(prefl, resrefl.x);
+
+          col += getMat(prefl, nrefl, refl, resrefl);
+        }
     }
+col = mix(col, vec3(.2,.5,.9), 1.-exp(-depth*.1));
+float beat = 1./2.3;
+col += .25*vec3(.2,.3,.8)*pow(mod(time, beat)/beat, 2.);
+col = pow(col, vec3(1.8));
+
+vec2 uv2 = vec2(atan(uv.y, uv.x)/PI, length(uv)*.1-time*.2);
+   col += pow(textureRepeat(greyTex, uv2).xxx,vec3(5.))*sat(length(uv))*vec3(sin(uv.xyx*20.));
 
     return col;
 }
+uniform sampler2D backbuffer;
 void main() {
+  vec2 ouv = gl_FragCoord.xy / resolution.xy;
     vec2 uv = (gl_FragCoord.xy-.5*resolution.xy) / resolution.xx;
     _seed = time+textureRepeat(greyTex, uv).x;
    vec3 col = rdr(uv);
+       float stp = .1;
+       vec2 uv2 = uv;
+       //uv2 = mod(uv2+stp*.5,stp)-stp-.5;
+   col += rdr(uv+(vec2(rand(), rand())-.5)*.05)*.35;
+   col += texture2D(ziconTex, uv*4.+.5).xxx*.4;
+   col = sat(col);
+   col = mix(col, texture2D(backbuffer, ouv).xyz, .5);
+
 //   col += texture2D(ziconTex, (uv*4.+.5)).xyz;
     gl_FragColor = vec4(col, 1.0);
 }
